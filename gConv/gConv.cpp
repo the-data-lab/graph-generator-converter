@@ -281,7 +281,7 @@ void gConv::save_csr(string edgefile)
     fclose(f);
     cout << _beg_pos[vert_count] << endl;
 
-    #ifndef HAL_GRID
+    #ifndef HALF_GRID
     file = edgefile + ".adj_in";
     f = fopen(file.c_str(), "wb");
     assert(f != 0);
