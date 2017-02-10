@@ -1,0 +1,4 @@
+./g500_2d_tuple/generator_test_mpi 25 16 1 1
+./g500_2d_tuple/generator_test_mpi 26 16 1 1
+./g500_2d_tuple/generator_test_mpi 28 16 1 1
+
