@@ -7,27 +7,7 @@
  * https://www.seas.gwu.edu/~howie/
  * Contact: iheartgraph@gmail.com
  *
- * 
- * Please cite the following paper:
- * 
- * Pradeep Kumar and H. Howie Huang. 2016. G-Store: High-Performance Graph Store for Trillion-Edge Processing. In Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis (SC '16).
- 
- *
- * This file is part of G-Store.
- *
- * G-Store is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * G-Store is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with G-Store.  If not, see <http://www.gnu.org/licenses/>.
- */
+*/
 
 
 #include <omp.h>
@@ -51,7 +31,14 @@
 #include "wtime.h"
 #include "gConv.h"
 
-void gConv::main(int argc, char * argv[])
+//XXX
+#define NUM_THDS 56
+
+
+
+gConv* g;
+
+void gConv::init(int argc, char * argv[])
 {
     int o;
     uint32_t scale;
@@ -63,22 +50,10 @@ void gConv::main(int argc, char * argv[])
             case 's': //scale
                 scale = atoi(optarg);
                 vert_count = (1L << scale);
-                scale -= bit_shift1;
-                p = (1 << scale);
-                p_s = (vert_count >> bit_shift2) + (0 != (vert_count & part_mask2_2));
-                read_part = new bitmap_t(p_s);
-                read_part_next = new bitmap_t(p_s);
-                read_part_next->reset();
                 break;
             case 'v'://vert count
                 //vert_count = atoi(optarg);
 				sscanf(optarg, "%ld", &vert_count);
-                p = (vert_count >> bit_shift1) + (0 != (vert_count & part_mask1_2));
-                //p_s = (vert_count >> bit_shift2) + (0 != (vert_count & part_mask2_2));
-                p_s = p_p*p;
-                read_part = new bitmap_t(p_s);
-                read_part_next = new bitmap_t(p_s);
-                read_part_next->reset();
                 break;
             case 'i':
                 edgefile = optarg;
@@ -97,8 +72,6 @@ void gConv::main(int argc, char * argv[])
         }
     }
 
-    cout << "Partition Count = " << p << endl;
-    cout << "Partition Count smaller = " << p_s << endl;
     double start, end;
   
     switch(c) {
@@ -116,7 +89,7 @@ void gConv::main(int argc, char * argv[])
    
 }
 
-void grid::pre_csr(string edgefile, gedge_t* edges, index_t nedges)
+void gConv::pre_csr(string edgefile, gedge_t* edges, index_t nedges)
 {
     _beg_pos = (index_t*) calloc(sizeof(index_t), vert_count + 1);  
 	
@@ -177,7 +150,7 @@ void grid::pre_csr(string edgefile, gedge_t* edges, index_t nedges)
     cout << "Total edges = " << prefix_sum << endl;
 
 }
-void grid::proc_csr(string edgefile, string part_file)
+void gConv::proc_csr(string edgefile, string part_file)
 {
     //read the binary edge file
     int fid_edge = open(edgefile.c_str(), O_RDONLY);
@@ -253,7 +226,7 @@ void grid::proc_csr(string edgefile, string part_file)
     cout << "classifcation done" << endl; 
 }
 
-void grid::compress_degree() 
+void gConv::compress_degree() 
 {
 	sdegree_t big_degree = 0;
 	
@@ -291,7 +264,7 @@ main(int argc, char *argv[])
     return 0;
 }
 
-void grid::save_csr(string edgefile)
+void gConv::save_csr(string edgefile)
 {
     cout << "save CSR start" << endl;
     string file = edgefile + ".adj";
@@ -326,10 +299,10 @@ void grid::save_csr(string edgefile)
     save_degree_files(edgefile);
 } 
 
-void grid::save_degree_files(string edgefile)
+void gConv::save_degree_files(string edgefile)
 {
-    file = edgefile + ".degree";
-    f = fopen(file.c_str(), "wb");
+    string file = edgefile + ".degree";
+    FILE* f = fopen(file.c_str(), "wb");
     assert(f != 0);
     fwrite(vert_degree, sizeof(degree_t), vert_count, f);
     fclose(f);
