@@ -49,7 +49,7 @@ void gConv::init(int argc, char * argv[])
 	//rank by: 0: no ranking, 1: rank by degree
 	int rank = 0;
     
-	while ((o = getopt (argc, argv, "s:o:hi:c::v:a:r")) != -1) {
+	while ((o = getopt (argc, argv, "s:o:hi:c::v:r")) != -1) {
         switch(o) {
             case 's': //scale
                 scale = atoi(optarg);
