@@ -145,7 +145,7 @@ void text_to_bin_manyfiles(string idir, string odir)
         
     }
     closedir(dir);
-
+    #pragma omp parallel for schedule(dynamic, 2)
     for (int i = 0; i < file_count; i++) {
         file = idir + "/" + ifile[i];
         ofile = odir + "/" + ifile[i] + ".edge"; 
