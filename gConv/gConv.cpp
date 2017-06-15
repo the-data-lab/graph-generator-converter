@@ -494,7 +494,7 @@ void gConv::proc_csr_rank(string edgefile, string part_file, int rank_by)
 
 void gConv::pre_csr(gedge_t* edges, index_t nedges)
 {
-	#pragma omp parallel num_threads(NUM_THDS) 
+	#pragma omp parallel 
 	{
 		gedge_t  edge;
 		vertex_t v0, v1;
@@ -718,7 +718,7 @@ void gConv::proc_csr_dir(string idir, string part_file)
         assert(f != 0);
         fread(edges, sizeof(gedge_t), nedges, f);
 
-        #pragma omp parallel num_threads(NUM_THDS) 
+        #pragma omp parallel  
         { 
             gedge_t  edge;
             vertex_t v0, v1;
