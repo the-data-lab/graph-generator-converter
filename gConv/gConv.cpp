@@ -667,22 +667,72 @@ void gConv::proc_csr_dir(string idir, string part_file)
                                         MAP_PRIVATE, fid_edge, 0);
         madvise(edges, st_edge.st_size, MADV_SEQUENTIAL);
         */
-        //calculate the degree and beg_pos
+        //---------------calculate the degree and beg_pos-------------
         edges = (gedge_t*) malloc(st_edge.st_size);
         FILE* f = fopen(edgefile.c_str(), "rb");
         assert(f != 0);
         fread(edges, sizeof(gedge_t), nedges, f);
-        pre_csr(edges, nedges);
+        
+        #pragma omp parallel 
+        {
+            gedge_t  edge;
+            vertex_t v0, v1;
+            
+            #pragma omp for
+            for(index_t k = 0; k < nedges; ++k) {
+                edge = edges[k];
+                if (edge.is_self_loop()) continue;
+            
+                v0 = edge.get_v0();
+                v1 = edge.get_v1();
+                
+                __sync_fetch_and_add(_beg_pos + v0, 1);
+                __sync_fetch_and_add(vert_degree + v0, 1);
+                
+                #ifdef HALF_GRID
+                __sync_fetch_and_add(_beg_pos + v1, 1);
+                __sync_fetch_and_add(vert_degree + v1, 1);
+                #else 
+                __sync_fetch_and_add(_beg_pos_in + v1, 1);
+                #endif
+            }
+        }
         
         free(edges);
         close(fid_edge); 
         fclose(f);
         
     }
-    cout << file_count << endl;
     closedir(dir);
     
-    //Make actual CSR file
+    //Calculate the CSR beg_pos
+    index_t prefix_sum = 0;
+	index_t curr_value = 0;
+	#ifndef HALF_GRID
+    index_t prefix_sum_in = 0;
+	index_t curr_value_in = 0;
+	#endif
+    
+	for (index_t ipart = 0; ipart < vert_count; ++ipart) {
+		curr_value = _beg_pos[ipart];
+        _beg_pos[ipart] = prefix_sum;
+        prefix_sum += curr_value;
+		#ifndef HALF_GRID
+		curr_value_in = _beg_pos_in[ipart];
+        _beg_pos_in[ipart] = prefix_sum_in;
+        prefix_sum_in += curr_value_in;
+		#endif
+    }
+
+    _beg_pos[vert_count] = prefix_sum;
+	#ifndef HALF_GRID
+    _beg_pos_in[vert_count] = prefix_sum_in;
+    cout << "Total edges = " << prefix_sum_in << endl;
+	#endif
+    cout << "Total edges = " << prefix_sum << endl;
+    cout << file_count << endl;
+    
+    //----------- Make CSR file -------------------
     index_t* count_edge = (index_t*) calloc(sizeof(index_t), vert_count);  
     _adj = (vertex_t*)calloc(sizeof(vertex_t), _beg_pos[vert_count]);
     
