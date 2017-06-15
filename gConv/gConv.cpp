@@ -27,6 +27,7 @@
 #include <fstream>
 #include <libaio.h>
 #include <math.h>
+#include <dirent.h>
 #include <asm/mman.h>
 #include "wtime.h"
 #include "gConv.h"
@@ -38,11 +39,238 @@
 
 gConv* g;
 
+inline off_t fsize(const char *filename) {
+    struct stat st; 
+    if (stat(filename, &st) == 0)
+        return st.st_size;
+    return -1; 
+}
+
+void text_to_bin(string textfile, string ofile)
+{
+	int fd;
+	char* ss_head;
+	char* ss;
+
+	size_t file_size = fsize(textfile.c_str());
+	fd = open( textfile.c_str(), O_CREAT|O_RDWR, 00777);
+
+	ss_head = (char*)mmap(NULL,file_size,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
+
+	size_t head_offset=0;
+    
+    //remove initial comments, 
+    //generally present in real-world graphs downloaded from internet.
+	while(ss_head[head_offset]=='%'){
+		while(ss_head[head_offset]!='\n'){
+			head_offset++;
+		}
+		head_offset++;
+	}
+	ss = ss_head + head_offset;
+	file_size -= head_offset;
+
+	size_t curr=0;
+	size_t next=0;
+
+	//step 4: write adjacent list 
+	vertex_t v0;
+    vertex_t v1;
+	size_t offset =0;
+	next = 0;
+	curr = 0;
+
+	//int fd4 = open( ofile.c_str(), O_CREAT|O_RDWR,00777 );
+	//ftruncate(fd4, edge_count*sizeof(gedge_t));
+	//gedge_t* adj = (gedge_t*)mmap(NULL,edge_count*sizeof(gedge_t),
+    //                                PROT_READ|PROT_WRITE,MAP_SHARED,fd4,0);
+	//gedge_t* adj = (gedge_t*)malloc(edge_count*sizeof(gedge_t));
+	gedge_t* adj = (gedge_t*)malloc(2*file_size);//allocating more memory, but should be ok
+	
+	while(next < file_size) {
+	    char* sss = ss+curr;
+	    v0 = atoi(sss);//first end of pair
+	    while((ss[next]!=' ')&&(ss[next]!='\n')&&(ss[next]!='\t')){
+		    next++;
+	    }
+	    while((ss[next]==' ')||(ss[next]=='\n')||(ss[next]=='\t')){
+		    next++;
+	    }
+	    curr = next;
+
+	    char* sss1=ss+curr;
+	    v1 = atoi(sss1);//second end of pair
+         
+	    adj[offset].set_v0(v0);
+	    adj[offset].set_v1(v1);
+		
+
+	    while((ss[next]!=' ')&&(ss[next]!='\n')&&(ss[next]!='\t')){
+		    next++;
+	    }
+	    while((ss[next]==' ')||(ss[next]=='\n')||(ss[next]=='\t')){
+		    next++;
+	    }
+	    curr = next;
+
+	    offset++;
+	}
+	
+	munmap(ss_head,sizeof(char)*file_size);
+	//munmap( adj,sizeof(vertex_t)*edge_count );
+	close(fd);
+	FILE* fd4 = fopen(ofile.c_str(), "wb");
+    assert(fd4 != 0);
+    fwrite(adj, sizeof(gedge_t), offset, fd4);
+    
+    fclose(fd4);
+}
+
+void text_to_bin_manyfiles(string idir, string odir)
+{
+    struct dirent *ptr;
+    DIR *dir;
+    int file_count = 0;
+    string ifile[1024];
+    string file;
+    string ofile;
+    
+    //Read graph file
+    dir = opendir(idir.c_str());
+    while (NULL != (ptr = readdir(dir))) {
+        if (ptr->d_name[0] == '.') continue;
+        
+        ifile[file_count] =  string(ptr->d_name);
+        file_count++;
+        
+    }
+    closedir(dir);
+
+    for (int i = 0; i < file_count; i++) {
+        file = idir + "/" + ifile[i];
+        ofile = odir + "/" + ifile[i] + ".edge"; 
+        text_to_bin(file, ofile);
+    }
+    
+}
+
+void text_to_bin_id_translate(string textfile)
+{
+	int fd;
+	char* ss_head;
+	char* ss;
+
+	size_t file_size = fsize(textfile.c_str());
+	fd = open( textfile.c_str(), O_CREAT|O_RDWR, 00777);
+
+	ss_head = (char*)mmap(NULL,file_size,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
+
+	size_t head_offset=0;
+	while(ss_head[head_offset]=='%'){
+		while(ss_head[head_offset]!='\n'){
+			head_offset++;
+		}
+		head_offset++;
+	}
+	ss = &ss_head[head_offset];
+	file_size -= head_offset;
+
+	size_t curr=0;
+	size_t next=0;
+
+	//step 1. vert_count,edge_count,
+	size_t edge_count=0;
+	size_t vert_count;
+	uint32_t v_max = 0;
+	uint32_t v_min = 999999;//as infinity
+	vertex_t a;
+	while(next<file_size){
+		char* sss=ss+curr;
+		a = atoi(sss);
+
+		if(v_max<a){
+			v_max = a;
+		}
+		if(v_min>a){
+			v_min = a;
+		}
+
+		while((ss[next]!=' ')&&(ss[next]!='\n')&&(ss[next]!='\t')){
+			next++;
+		}
+		while((ss[next]==' ')||(ss[next]=='\n')||(ss[next]=='\t')){
+			next++;
+		}
+		curr = next;
+        edge_count++; 
+	}
+	edge_count /=2;
+	vert_count = v_max - v_min + 1;
+
+	cerr<<"max vertex id: "<<v_max<<endl;
+	cerr<<"min vertex id: "<<v_min<<endl;
+
+	cerr<<"edge count: "<<edge_count<<endl;
+	cerr<<"vert count: "<<vert_count<<endl;
+
+	//step 4: write adjacent list 
+	uint32_t v0;
+    uint32_t v1;
+	size_t offset =0;
+	next = 0;
+	curr = 0;
+
+    string edgefile = textfile + ".edge";    
+	//int fd4 = open( edgefile.c_str(), O_CREAT|O_RDWR,00777 );
+	//ftruncate(fd4, edge_count*sizeof(gedge_t));
+	//gedge_t* adj = (gedge_t*)mmap(NULL,edge_count*sizeof(gedge_t),
+    //                                PROT_READ|PROT_WRITE,MAP_SHARED,fd4,0);
+	gedge_t* adj = (gedge_t*)malloc(edge_count*sizeof(gedge_t));
+	
+	while(next < file_size) {
+	    char* sss = ss+curr;
+	    v0 = atoi(sss)-v_min;//first end of pair
+	    while((ss[next]!=' ')&&(ss[next]!='\n')&&(ss[next]!='\t')){
+		    next++;
+	    }
+	    while((ss[next]==' ')||(ss[next]=='\n')||(ss[next]=='\t')){
+		    next++;
+	    }
+	    curr = next;
+
+	    char* sss1=ss+curr;
+	    v1 = atoi(sss1)-v_min;//second end of pair
+         
+	    adj[offset].set_v0(v0);
+	    adj[offset].set_v1(v1);
+		
+
+	    while((ss[next]!=' ')&&(ss[next]!='\n')&&(ss[next]!='\t')){
+		    next++;
+	    }
+	    while((ss[next]==' ')||(ss[next]=='\n')||(ss[next]=='\t')){
+		    next++;
+	    }
+	    curr = next;
+
+	    offset++;
+	}
+	
+	munmap( ss,sizeof(char)*file_size );
+	//munmap( adj,sizeof(vertex_t)*edge_count );
+	close(fd);
+	FILE* fd4 = fopen(edgefile.c_str(), "wb");
+    assert(fd4 != 0);
+    fwrite(adj, sizeof(gedge_t), edge_count, fd4);
+    
+    fclose(fd4);
+}
+
 void gConv::init(int argc, char * argv[])
 {
     int o;
     uint32_t scale;
-    int c = 0;
+    int c = 1000;
     string edgefile;
     string part_file;
     while ((o = getopt (argc, argv, "s:o:hi:j:c:m:v:a:")) != -1) {
@@ -75,7 +303,20 @@ void gConv::init(int argc, char * argv[])
     double start, end;
   
     switch(c) {
-	case 1:
+    case 0:
+		start = mywtime();
+		text_to_bin(edgefile, part_file);//input is text file
+		end = mywtime();
+		cout << "Time = " << end - start << endl;
+		return;
+    case 1:
+		start = mywtime();
+		//Both arguments are directory
+        text_to_bin_manyfiles(edgefile, part_file);//input/output are dir
+		end = mywtime();
+		cout << "Time = " << end - start << endl;
+		return;
+	case 2:
 		start = mywtime();
 		proc_csr(edgefile, part_file);
         save_csr(part_file);
@@ -281,7 +522,7 @@ void gConv::save_csr(string edgefile)
     fclose(f);
     cout << _beg_pos[vert_count] << endl;
 
-    #ifndef HAL_GRID
+    #ifndef HALF_GRID
     file = edgefile + ".adj_in";
     f = fopen(file.c_str(), "wb");
     assert(f != 0);
