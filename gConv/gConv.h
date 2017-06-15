@@ -109,11 +109,12 @@ class gConv {
 public:
 	
     void proc_csr(string edgefile, string part_file);
+    void proc_csr_dir(string edgefile, string part_file);
     void proc_csr_rank(string edgefile, string part_file, int rank_by);
     void init(int argc, char* argv[]);
 	
 private:	
-	void pre_csr(string edgefile, gedge_t* edges, index_t nedges);
+	void pre_csr(gedge_t* edges, index_t nedges);
 	void pre_csr_rank(string edgefile, gedge_t* edges, index_t nedges, int rank_by);
 	void compress_degree();
     void save_csr(string edgefile);

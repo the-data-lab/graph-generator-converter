@@ -328,14 +328,23 @@ void gConv::init(int argc, char * argv[])
 		end = mywtime();
 		cout << "Time = " << end - start << endl;
 		return;
-	case 2:
+    case 2:
+		start = mywtime();
+        //directory, output file name
+		proc_csr_dir(edgefile, part_file);
+        save_csr(part_file);
+		end = mywtime();
+		cout << "CSR Time = " << end - start << endl;
+		return;
+        return;
+	case 3:
 		start = mywtime();
 		proc_csr(edgefile, part_file);
         save_csr(part_file);
 		end = mywtime();
 		cout << "CSR Time = " << end - start << endl;
 		return;
-	case 3:
+	case 4:
 		start = mywtime();
 		proc_csr_rank(edgefile, part_file, rank);
         save_csr(part_file);
@@ -483,17 +492,8 @@ void gConv::proc_csr_rank(string edgefile, string part_file, int rank_by)
     cout << "classifcation done" << endl; 
 }
 
-void gConv::pre_csr(string edgefile, gedge_t* edges, index_t nedges)
+void gConv::pre_csr(gedge_t* edges, index_t nedges)
 {
-    _beg_pos = (index_t*) calloc(sizeof(index_t), vert_count + 1);  
-    
-	#ifndef HALF_GRID
-	_beg_pos_in = (index_t*) calloc(sizeof(index_t), vert_count + 1);  
-	#endif
-	
-
-	vert_degree = (degree_t*)calloc(sizeof(degree_t), vert_count);
-	
 	#pragma omp parallel num_threads(NUM_THDS) 
 	{
 		gedge_t  edge;
@@ -566,8 +566,16 @@ void gConv::proc_csr(string edgefile, string part_file)
     fread(edges, sizeof(gedge_t), nedges, f);
 
     double start = mywtime();
+    
+    _beg_pos = (index_t*) calloc(sizeof(index_t), vert_count + 1);  
+	#ifndef HALF_GRID
+	_beg_pos_in = (index_t*) calloc(sizeof(index_t), vert_count + 1);  
+	#endif
 
-    pre_csr(edgefile, edges, nedges);
+	vert_degree = (degree_t*)calloc(sizeof(degree_t), vert_count);
+
+    //calculate the degree and beg_pos
+    pre_csr(edges, nedges);
 
     index_t* count_edge = (index_t*) calloc(sizeof(index_t), vert_count);  
     _adj = (uint32_t*)calloc(sizeof(uint32_t), _beg_pos[vert_count]);
@@ -621,6 +629,140 @@ void gConv::proc_csr(string edgefile, string part_file)
     double end = mywtime();
     cout << "CSR conversion Time = " << end -  start << endl;
     cout << "classifcation done" << endl; 
+}
+
+void gConv::proc_csr_dir(string idir, string part_file)
+{
+    struct dirent *ptr;
+    DIR *dir;
+    int file_count = 0;
+    string edgefile;
+    
+    double start = mywtime();
+    
+    _beg_pos = (index_t*) calloc(sizeof(index_t), vert_count + 1);  
+    #ifndef HALF_GRID
+    _beg_pos_in = (index_t*) calloc(sizeof(index_t), vert_count + 1);  
+    #endif
+
+    vert_degree = (degree_t*)calloc(sizeof(degree_t), vert_count);
+    
+    //Read graph files
+    dir = opendir(idir.c_str());
+    while (NULL != (ptr = readdir(dir))) {
+        if (ptr->d_name[0] == '.') continue;
+        
+        file_count++;
+        edgefile = idir + "/" + string(ptr->d_name);
+        //read the binary edge file
+        int fid_edge = open(edgefile.c_str(), O_RDONLY);
+        struct stat st_edge;
+        fstat(fid_edge, &st_edge);
+        assert(st_edge.st_size != 0);
+        index_t nedges = st_edge.st_size/sizeof(gedge_t);
+        gedge_t* edges;
+        
+        /*
+        edges = (gedge_t*)mmap(0, st_edge.st_size, PROT_READ, 
+                                        MAP_PRIVATE, fid_edge, 0);
+        madvise(edges, st_edge.st_size, MADV_SEQUENTIAL);
+        */
+        //calculate the degree and beg_pos
+        edges = (gedge_t*) malloc(st_edge.st_size);
+        FILE* f = fopen(edgefile.c_str(), "rb");
+        assert(f != 0);
+        fread(edges, sizeof(gedge_t), nedges, f);
+        pre_csr(edges, nedges);
+        
+        free(edges);
+        close(fid_edge); 
+        fclose(f);
+        
+    }
+    cout << file_count << endl;
+    closedir(dir);
+    
+    //Make actual CSR file
+    index_t* count_edge = (index_t*) calloc(sizeof(index_t), vert_count);  
+    _adj = (vertex_t*)calloc(sizeof(vertex_t), _beg_pos[vert_count]);
+    
+	#ifndef HALF_GRID
+	uint32_t* _adj_in = (uint32_t*)calloc(sizeof(uint32_t), _beg_pos_in[vert_count]);
+    index_t* count_edge_in = (index_t*) calloc(sizeof(index_t), vert_count);  
+	#endif
+
+    //---classify the edges in the grid
+    //Read graph files
+    dir = opendir(idir.c_str());
+    while (NULL != (ptr = readdir(dir))) {
+        if (ptr->d_name[0] == '.') continue;
+        
+        file_count++;
+        //read the binary edge file
+        int fid_edge = open(edgefile.c_str(), O_RDONLY);
+        struct stat st_edge;
+        fstat(fid_edge, &st_edge);
+        assert(st_edge.st_size != 0);
+        index_t nedges = st_edge.st_size/sizeof(gedge_t);
+        gedge_t* edges;
+        
+        /*
+        edges = (gedge_t*)mmap(0, st_edge.st_size, PROT_READ, 
+                                        MAP_PRIVATE, fid_edge, 0);
+        madvise(edges, st_edge.st_size, MADV_SEQUENTIAL);
+        */
+        
+        //calculate the degree and beg_pos
+        edges = (gedge_t*) malloc(st_edge.st_size);
+        FILE* f = fopen(edgefile.c_str(), "rb");
+        assert(f != 0);
+        fread(edges, sizeof(gedge_t), nedges, f);
+
+        #pragma omp parallel num_threads(NUM_THDS) 
+        { 
+            gedge_t  edge;
+            vertex_t v0, v1;
+            
+            index_t n, m;
+            
+            #pragma omp for
+            for(index_t k = 0; k < nedges; ++k) {
+                edge = edges[k];
+                if (edge.is_self_loop()) continue;
+            
+                v0 = edge.get_v0();
+                v1 = edge.get_v1();
+                
+                n = _beg_pos[v0];
+                m = __sync_fetch_and_add(count_edge + v0, 1);
+                _adj[n + m] = v1;
+
+                #ifdef HALF_GRID
+                n = _beg_pos[v1];
+                m = __sync_fetch_and_add(count_edge + v1, 1);
+                _adj[n + m] = v0;
+                #else
+                n = _beg_pos_in[v1];
+                m = __sync_fetch_and_add(count_edge_in + v1, 1);
+                _adj_in[n + m] = v0;
+                #endif	
+            }
+        }
+        free(edges);
+        fclose(f);
+        close(fid_edge);
+    }
+    closedir(dir);
+   
+    //munmap (edges, st_edge.st_size);
+	//free(_adj);
+	//free(_beg_pos);
+	//#ifndef HALF_GRID
+	//free(_adj_in);	
+	//#endif
+
+    double end = mywtime();
+    cout << "CSR conversion Time = " << end -  start << endl;
 }
 
 void gConv::compress_degree() 
@@ -704,6 +846,7 @@ void gConv::save_degree_files(string edgefile)
     fwrite(vert_degree, sizeof(degree_t), vert_count, f);
     fclose(f);
 	
+    /*
     cout << "Compressing degree start" << endl;
 	compress_degree();
 	cout << "Compressing done" << endl;
@@ -720,4 +863,5 @@ void gConv::save_degree_files(string edgefile)
     fwrite(bvert_degree, sizeof(bdegree_t), bdegree_count, f);
     cout << "saving done" << endl;
     fclose(f);
+    */
 }
