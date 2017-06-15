@@ -25,7 +25,7 @@
 #include <errno.h>
 #include <cmath>
 #include <fstream>
-#include <libaio.h>
+//#include <libaio.h>
 #include <math.h>
 #include <dirent.h>
 #include <asm/mman.h>
@@ -85,7 +85,7 @@ void text_to_bin(string textfile, string ofile)
 	//gedge_t* adj = (gedge_t*)mmap(NULL,edge_count*sizeof(gedge_t),
     //                                PROT_READ|PROT_WRITE,MAP_SHARED,fd4,0);
 	//gedge_t* adj = (gedge_t*)malloc(edge_count*sizeof(gedge_t));
-	gedge_t* adj = (gedge_t*)malloc(2*file_size);//allocating more memory, but should be ok
+	gedge_t* adj = (gedge_t*)malloc(file_size);//allocating more memory, but should be ok
 	
 	while(next < file_size) {
 	    char* sss = ss+curr;
@@ -122,7 +122,7 @@ void text_to_bin(string textfile, string ofile)
 	FILE* fd4 = fopen(ofile.c_str(), "wb");
     assert(fd4 != 0);
     fwrite(adj, sizeof(gedge_t), offset, fd4);
-    
+    free(adj); 
     fclose(fd4);
 }
 
@@ -144,14 +144,20 @@ void text_to_bin_manyfiles(string idir, string odir)
         file_count++;
         
     }
+    cout << file_count << endl;
     closedir(dir);
-    #pragma omp parallel for schedule(dynamic, 2)
-    for (int i = 0; i < file_count; i++) {
-        file = idir + "/" + ifile[i];
-        ofile = odir + "/" + ifile[i] + ".edge"; 
-        text_to_bin(file, ofile);
+    #pragma omp parallel  
+    {
+        string file, ofile; 
+        #pragma omp for 
+        for (int i = 0; i < file_count; i++) {
+            file = idir + "/" + ifile[i];
+            ofile = odir + "/" + ifile[i] + ".edge";
+            cout << "started " << file << endl;
+            text_to_bin(file, ofile);
+            cout << "done " << file << endl;
+        }
     }
-    
 }
 
 void text_to_bin_id_translate(string textfile)
