@@ -313,7 +313,7 @@ void gConv::init(int argc, char * argv[])
     }
 
     double start, end;
-  
+    cout << vert_count << endl; 
     switch(c) {
     case 0:
 		start = mywtime();
