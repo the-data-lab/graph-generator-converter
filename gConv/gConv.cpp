@@ -344,7 +344,15 @@ void gConv::init(int argc, char * argv[])
 		end = mywtime();
 		cout << "CSR Time = " << end - start << endl;
 		return;
-	case 4:
+    case 4: 
+		start = mywtime();
+        //csr file as input, csr file as output 
+		proc_csr_rankbydegree(edgefile, part_file, rank);
+        save_csr(part_file);
+		end = mywtime();
+		cout << "CSR Time = " << end - start << endl;
+		return;
+	case 5:
 		start = mywtime();
 		proc_csr_rank(edgefile, part_file, rank);
         save_csr(part_file);
@@ -418,6 +426,101 @@ void gConv::pre_csr_rank(string edgefile, gedge_t* edges, index_t nedges, int ra
 
     _beg_pos[vert_count] = prefix_sum;
     cout << "Total edges = " << prefix_sum << endl;
+}
+
+//CSR undirected to CSR rank by degree
+//First clean and remove duplication, self loop
+void gConv::proc_csr_rankbydegree(string csrfile, string part_file, int rank_by) 
+{
+    //read the binary CSR file
+    string file_etable = csrfile + ".adj";
+    string file_vtable = csrfile + ".beg_pos"; 
+    int fid_vtable = open(file_vtable.c_str(), O_RDONLY);
+    struct stat st_vert;
+    fstat(fid_vtable, &st_vert);
+    assert(st_vert.st_size != 0);
+    vertex_t v_count = st_vert.st_size/sizeof(index_t);
+    close(fid_vtable);
+
+    index_t  max_ecount = (1L << 30);
+    index_t  max_vcount = (1L << 24);
+    index_t* vtable     = (index_t*)calloc(sizeof(index_t), v_count);
+    index_t* new_vtable = (index_t*)calloc(sizeof(index_t), v_count);
+    vertex_t* etable    = (vertex_t*)calloc(sizeof(vertex_t), max_ecount);
+    vertex_t* new_etable= (vertex_t*)calloc(sizeof(vertex_t), max_ecount);
+    vertex_t* new_degree= (vertex_t*)calloc(sizeof(vertex_t), max_vcount);
+    
+    //read beg pos file
+    FILE* f_etable = fopen(file_etable.c_str(), "rb");
+    FILE* f_vtable = fopen(file_vtable.c_str(), "rb");
+    fread(vtable, sizeof(index_t), v_count, f_vtable);
+    fclose(f_etable);
+    
+    index_t     e_count = 0;
+    vertex_t    init_v  = 0;
+    vertex_t    degree  = 0;
+    index_t     prefix  = 0;
+    index_t     new_ecount;
+    vertex_t*   adj_list;
+    vertex_t*   new_adjlist;
+    
+
+    for (vertex_t v = 0; v < v_count; ++v) {
+        degree = vtable[v+1] - vtable[v];
+        if (e_count + degree < max_ecount && (v - init_v < max_vcount)) {
+            e_count += degree;
+            continue;
+        }
+
+        //read edge file
+        fread(etable, sizeof(vertex_t), e_count, f_etable);
+        
+        index_t e_prefix = vtable[init_v];
+        index_t new_eprefix = new_vtable[init_v];
+    
+
+        //sort, remove duplication and self loop
+        for (vertex_t u = init_v; u < v; ++u) {
+            adj_list = etable + vtable[u] - e_prefix;
+            degree = vtable[u+1] - vtable[u];
+            sort(adj_list, adj_list + degree);
+
+            for (vertex_t d = 1; d < degree; ++d) {
+                if ((adj_list[d-1] == adj_list[d]) || (u == adj_list[d-1])) {
+                    //
+                } else {
+                    new_vtable[u]++;
+                    new_ecount++;
+                }
+            }
+        }
+        //prepare new beg pos
+        for (vertex_t u = init_v; u < v; ++u) {
+            degree = new_vtable[u];
+            new_vtable[u] = prefix;
+            prefix += degree; 
+        }
+
+        //prepare new adj list
+        for (vertex_t u = init_v; u < v; ++u) {
+            for (vertex_t d = 1; d < degree; ++d) {
+                adj_list = etable + vtable[u] - e_prefix;
+                if ((adj_list[d-1] == adj_list[d]) || (u == adj_list[d-1])) {
+                    //
+                } else {
+                    new_adjlist = new_etable + new_vtable[u] - new_eprefix;
+                    new_adjlist[new_degree[u - init_v]] = adj_list[d-1];
+                    new_vtable[u]++;
+                    new_ecount++;
+                }
+            }
+            
+        }
+
+        //update the variable for bookkeeping.
+        init_v = v;
+    }
+
 }
 
 void gConv::proc_csr_rank(string edgefile, string part_file, int rank_by)
