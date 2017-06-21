@@ -348,9 +348,9 @@ void gConv::init(int argc, char * argv[])
 		start = mywtime();
         //csr file as input, csr file as output 
 		proc_csr_rankbydegree(edgefile, part_file, rank);
-        save_csr(part_file);
+        //save_csr(part_file);
 		end = mywtime();
-		cout << "CSR Time = " << end - start << endl;
+		cout << "Rank by degree Time = " << end - start << endl;
 		return;
 	case 5:
 		start = mywtime();
@@ -432,9 +432,16 @@ void gConv::pre_csr_rank(string edgefile, gedge_t* edges, index_t nedges, int ra
 //First clean and remove duplication, self loop
 void gConv::proc_csr_rankbydegree(string csrfile, string part_file, int rank_by) 
 {
-    //read the binary CSR file
     string file_etable = csrfile + ".adj";
     string file_vtable = csrfile + ".beg_pos"; 
+
+    //New files
+    string file_newetable = part_file + ".adj_rankbydegree";
+    string file_newvtable = part_file + ".beg_pos_rankbydegree";
+    FILE* f_newvtable = fopen(file_newvtable.c_str(), "wb");
+    FILE* f_newetable = fopen(file_newetable.c_str(), "wb");
+
+    //Number of vertex
     int fid_vtable = open(file_vtable.c_str(), O_RDONLY);
     struct stat st_vert;
     fstat(fid_vtable, &st_vert);
@@ -442,6 +449,7 @@ void gConv::proc_csr_rankbydegree(string csrfile, string part_file, int rank_by)
     vertex_t v_count = st_vert.st_size/sizeof(index_t);
     close(fid_vtable);
 
+    //memory allocation
     index_t  max_ecount = (1L << 30);
     index_t  max_vcount = (1L << 24);
     index_t* vtable     = (index_t*)calloc(sizeof(index_t), v_count);
@@ -454,7 +462,7 @@ void gConv::proc_csr_rankbydegree(string csrfile, string part_file, int rank_by)
     FILE* f_etable = fopen(file_etable.c_str(), "rb");
     FILE* f_vtable = fopen(file_vtable.c_str(), "rb");
     fread(vtable, sizeof(index_t), v_count, f_vtable);
-    fclose(f_etable);
+    fclose(f_vtable);
     
     index_t     e_count = 0;
     vertex_t    init_v  = 0;
@@ -467,7 +475,7 @@ void gConv::proc_csr_rankbydegree(string csrfile, string part_file, int rank_by)
 
     for (vertex_t v = 0; v < v_count; ++v) {
         degree = vtable[v+1] - vtable[v];
-        if (e_count + degree < max_ecount && (v - init_v < max_vcount)) {
+        if ((e_count + degree < max_ecount) && (v - init_v < max_vcount)) {
             e_count += degree;
             continue;
         }
@@ -480,6 +488,7 @@ void gConv::proc_csr_rankbydegree(string csrfile, string part_file, int rank_by)
     
 
         //sort, remove duplication and self loop
+        #pragma omp parallel for 
         for (vertex_t u = init_v; u < v; ++u) {
             adj_list = etable + vtable[u] - e_prefix;
             degree = vtable[u+1] - vtable[u];
@@ -500,8 +509,10 @@ void gConv::proc_csr_rankbydegree(string csrfile, string part_file, int rank_by)
             new_vtable[u] = prefix;
             prefix += degree; 
         }
+        memset(new_degree, 0, sizeof(vertex_t)*(v - init_v));
 
         //prepare new adj list
+        #pragma omp parallel for 
         for (vertex_t u = init_v; u < v; ++u) {
             for (vertex_t d = 1; d < degree; ++d) {
                 adj_list = etable + vtable[u] - e_prefix;
@@ -514,12 +525,24 @@ void gConv::proc_csr_rankbydegree(string csrfile, string part_file, int rank_by)
                     new_ecount++;
                 }
             }
-            
         }
+
+        //write the new adj list
+        fwrite(new_etable, sizeof(vertex_t), new_ecount, f_newetable);
 
         //update the variable for bookkeeping.
         init_v = v;
+        e_count = 0;
+        degree = vtable[v+1] - vtable[v];
+        if (e_count + degree < max_ecount) {
+            e_count += degree;
+            cout << "increase the memory size" << endl;
+            assert(0);
+        }
     }
+    
+    //write the new vertex table    
+    fwrite(new_vtable, sizeof(index_t), v_count, f_newvtable);
 
 }
 
