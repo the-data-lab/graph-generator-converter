@@ -116,7 +116,7 @@ public:
 private:	
 	void pre_csr(gedge_t* edges, index_t nedges);
 	void pre_csr_rank(string edgefile, gedge_t* edges, index_t nedges, int rank_by);
-    void proc_csr_rankbydegree(string csrfile, string part_file, int rank_by);
+    void proc_csr_clean(string csrfile, string part_file);
 	void compress_degree();
     void save_csr(string edgefile);
     void save_degree_files(string edgefile);
