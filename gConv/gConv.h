@@ -111,6 +111,7 @@ public:
     void proc_csr(string edgefile, string part_file);
     void proc_csr_dir(string edgefile, string part_file);
     void proc_csr_rank(string edgefile, string part_file, int rank_by);
+    void proc_csr_rankbig(string edgefile, string part_file, int rank_by);
     void init(int argc, char* argv[]);
 	
 private:	
