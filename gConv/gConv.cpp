@@ -46,6 +46,48 @@ inline off_t fsize(const char *filename) {
     return -1; 
 }
 
+void print_csr(string part_file)
+{
+    string file_etable = part_file + ".adj_rankbydegree";
+    string file_vtable = part_file + ".beg_pos_rankbydegree";
+    FILE* f_vtable = fopen(file_vtable.c_str(), "rb");
+    FILE* f_etable = fopen(file_etable.c_str(), "rb");
+    
+    //Number of vertex
+    int fid_vtable = open(file_vtable.c_str(), O_RDONLY);
+    struct stat st_vert;
+    fstat(fid_vtable, &st_vert);
+    assert(st_vert.st_size != 0);
+    vertex_t v_count = st_vert.st_size/sizeof(index_t) - 1;
+    close(fid_vtable);
+    cout << "v_count:" << v_count << endl;
+    
+    index_t* vtable = (index_t*)calloc(sizeof(index_t), v_count + 1);
+    fread(vtable, sizeof(index_t), v_count+1, f_vtable);
+    fclose(f_vtable);
+
+
+    vertex_t* etable= (vertex_t*)calloc(sizeof(vertex_t), vtable[v_count]);
+    fread(etable, sizeof(index_t), vtable[v_count], f_etable);
+    fclose(f_etable);
+
+    for (vertex_t v = 0; v < v_count; ++v) {
+        cout << "V = " << v << endl;
+        vertex_t degree = vtable[v+1] - vtable[v];
+        vertex_t* adj = etable + vtable[v];
+        for (vertex_t d = 0; d < degree; d++) {
+            cout << adj[d] << " "; 
+        }
+        cout << endl;
+    }
+
+}
+
+void print_edgetuple(string edgefile)
+{
+
+}
+
 void text_to_bin(string textfile, string ofile)
 {
 	int fd;
@@ -87,7 +129,7 @@ void text_to_bin(string textfile, string ofile)
 	//gedge_t* adj = (gedge_t*)mmap(NULL,edge_count*sizeof(gedge_t),
     //                                PROT_READ|PROT_WRITE,MAP_SHARED,fd4,0);
 	//gedge_t* adj = (gedge_t*)malloc(edge_count*sizeof(gedge_t));
-	gedge_t* adj = (gedge_t*)malloc(file_size);//allocating more memory, but should be ok
+	gedge_t* adj = (gedge_t*)malloc(file_size*4);//allocating more memory, but should be ok
 	
 	while(next < file_size) {
 	    char* sss = ss+curr;
@@ -373,6 +415,10 @@ void gConv::init(int argc, char * argv[])
 		end = mywtime();
 		cout << "CSR Time = " << end - start << endl;
 		return;
+
+    case 7:
+        print_csr(edgefile);
+        return;
     default:
         return;
     } 
@@ -822,7 +868,7 @@ void gConv::proc_csr_rankbig(string csrfile, string part_file, int rank)
         for (vertex_t d = 0; d < degree; ++d) {
             vertex_t nebr = adj_list[d];
             degree2 = vtable[nebr+1] - vtable[nebr];
-            if (degree < degree2) {
+            if ((degree < degree2) ||(degree == degree2 && u < nebr)) {
                 new_adjlist[new_degree[u]] = adj_list[d];
                 new_degree[u]++;
             }
