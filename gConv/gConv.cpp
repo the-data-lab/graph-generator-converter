@@ -419,11 +419,12 @@ void gConv::init(int argc, char * argv[])
     case 7:
         print_csr(edgefile);
         return;
+    case 8: 
+        proc_csr_big(edgefile, part_file);
+        return;
     default:
         return;
     } 
-
-   
 }
 
 void gConv::pre_csr_rank(string edgefile, gedge_t* edges, index_t nedges, int rank_by)
@@ -578,7 +579,6 @@ void gConv::proc_csr_clean(string csrfile, string part_file)
             new_vtable[u] = prefix;
             prefix += degree; 
         }
-        memset(new_degree, 0, sizeof(vertex_t)*(v - init_v));
         index_t new_eprefix = new_vtable[init_v];
 
         //prepare new adj list
@@ -1098,6 +1098,229 @@ void gConv::proc_csr(string edgefile, string part_file)
     cout << "classifcation done" << endl; 
 }
 
+void gConv::proc_csr_big(string idir, string part_file)
+{
+    struct dirent *ptr;
+    DIR *dir;
+    int file_count = 0;
+    string edgefile;
+    
+    double start = mywtime();
+    
+    _beg_pos = (index_t*) calloc(sizeof(index_t), vert_count + 1);  
+    #ifndef HALF_GRID
+    _beg_pos_in = (index_t*) calloc(sizeof(index_t), vert_count + 1);  
+    #endif
+
+    vert_degree = (degree_t*)calloc(sizeof(degree_t), vert_count);
+    
+    //Read graph files
+    dir = opendir(idir.c_str());
+    while (NULL != (ptr = readdir(dir))) {
+        if (ptr->d_name[0] == '.') continue;
+        
+        file_count++;
+        edgefile = idir + "/" + string(ptr->d_name);
+        //read the binary edge file
+        int fid_edge = open(edgefile.c_str(), O_RDONLY);
+        struct stat st_edge;
+        fstat(fid_edge, &st_edge);
+        assert(st_edge.st_size != 0);
+        index_t nedges = st_edge.st_size/sizeof(gedge_t);
+        gedge_t* edges;
+        
+        /*
+        edges = (gedge_t*)mmap(0, st_edge.st_size, PROT_READ, 
+                                        MAP_PRIVATE, fid_edge, 0);
+        madvise(edges, st_edge.st_size, MADV_SEQUENTIAL);
+        */
+        //---------------calculate the degree and beg_pos-------------
+        edges = (gedge_t*) malloc(st_edge.st_size);
+        FILE* f = fopen(edgefile.c_str(), "rb");
+        assert(f != 0);
+        fread(edges, sizeof(gedge_t), nedges, f);
+        
+        #pragma omp parallel 
+        {
+            gedge_t  edge;
+            vertex_t v0, v1;
+            
+            #pragma omp for
+            for(index_t k = 0; k < nedges; ++k) {
+                edge = edges[k];
+                if (edge.is_self_loop()) continue;
+            
+                v0 = edge.get_v0();
+                v1 = edge.get_v1();
+                
+                __sync_fetch_and_add(_beg_pos + v0, 1);
+                __sync_fetch_and_add(vert_degree + v0, 1);
+                
+                #ifdef HALF_GRID
+                __sync_fetch_and_add(_beg_pos + v1, 1);
+                __sync_fetch_and_add(vert_degree + v1, 1);
+                #else 
+                __sync_fetch_and_add(_beg_pos_in + v1, 1);
+                #endif
+            }
+        }
+        
+        free(edges);
+        close(fid_edge); 
+        fclose(f);
+        
+    }
+    closedir(dir);
+    
+    //Calculate the CSR beg_pos
+    index_t prefix_sum = 0;
+	index_t curr_value = 0;
+	#ifndef HALF_GRID
+    index_t prefix_sum_in = 0;
+	index_t curr_value_in = 0;
+	#endif
+    
+	for (index_t ipart = 0; ipart < vert_count; ++ipart) {
+		curr_value = _beg_pos[ipart];
+        _beg_pos[ipart] = prefix_sum;
+        prefix_sum += curr_value;
+		#ifndef HALF_GRID
+		curr_value_in = _beg_pos_in[ipart];
+        _beg_pos_in[ipart] = prefix_sum_in;
+        prefix_sum_in += curr_value_in;
+		#endif
+    }
+
+    _beg_pos[vert_count] = prefix_sum;
+	#ifndef HALF_GRID
+    _beg_pos_in[vert_count] = prefix_sum_in;
+    cout << "Total edges = " << prefix_sum_in << endl;
+	#endif
+    cout << "Total edges = " << prefix_sum << endl;
+    cout << file_count << endl;
+    
+    //----------- Make CSR file -------------------
+    index_t* count_edge = (index_t*) calloc(sizeof(index_t), vert_count);  
+    
+	#ifndef HALF_GRID
+	uint32_t* _adj_in = (uint32_t*)calloc(sizeof(uint32_t), _beg_pos_in[vert_count]);
+    index_t* count_edge_in = (index_t*) calloc(sizeof(index_t), vert_count);  
+	#endif
+    
+    string ofile = part_file + ".adj";
+    FILE* of = fopen(ofile.c_str(), "wb");
+    assert(of != 0);
+
+    #ifndef HALF_GRID
+    string ofile_in = part_file + ".adj_in";
+    FILE* of_in = fopen(ofile_in.c_str(), "wb");
+    assert(of_in != 0);
+    #endif
+
+    //---classify the edges in the grid
+    //Read graph files
+    const vertex_t iread_max = 2;
+    vertex_t x = 0;
+    vertex_t y = vert_count/iread_max;
+    for (int iread = 0; iread < iread_max; ++iread) {
+    x = (vert_count/iread_max)*(iread);
+    cout << "x = " << x << endl;
+    y = (vert_count/iread_max)*(iread+1);
+    cout << "y = " << y << endl;
+    _adj = (vertex_t*)calloc(sizeof(vertex_t), _beg_pos[y] - _beg_pos[x]);
+
+
+    dir = opendir(idir.c_str());
+    while (NULL != (ptr = readdir(dir))) {
+        if (ptr->d_name[0] == '.') continue;
+        
+        file_count++;
+        edgefile = idir + "/" + string(ptr->d_name);
+        //read the binary edge file
+        int fid_edge = open(edgefile.c_str(), O_RDONLY);
+        struct stat st_edge;
+        fstat(fid_edge, &st_edge);
+        assert(st_edge.st_size != 0);
+        index_t nedges = st_edge.st_size/sizeof(gedge_t);
+        gedge_t* edges;
+        
+        
+        //calculate the degree and beg_pos
+        edges = (gedge_t*) malloc(st_edge.st_size);
+        FILE* f = fopen(edgefile.c_str(), "rb");
+        assert(f != 0);
+        fread(edges, sizeof(gedge_t), nedges, f);
+
+        #pragma omp parallel  
+        { 
+            gedge_t  edge;
+            vertex_t v0, v1;
+            index_t n, m;
+            
+            #pragma omp for
+            for(index_t k = 0; k < nedges; ++k) {
+                edge = edges[k];
+                if (edge.is_self_loop()) continue;
+            
+                v0 = edge.get_v0();
+                v1 = edge.get_v1();
+                
+                if (x <= v0  && v0 < y ) { 
+                n = _beg_pos[v0];
+                m = __sync_fetch_and_add(count_edge + v0, 1);
+                _adj[n + m - _beg_pos[x]] = v1;
+                }
+                
+                if (x <= v1  && v1 < y ) { 
+                #ifdef HALF_GRID
+                n = _beg_pos[v1];
+                m = __sync_fetch_and_add(count_edge + v1, 1);
+                _adj[n + m - _beg_pos[x]] = v0;
+                #else
+                n = _beg_pos_in[v1];
+                m = __sync_fetch_and_add(count_edge_in + v1, 1);
+                _adj_in[n + m] = v0;
+                #endif
+                }    
+            }
+        }
+        free(edges);
+        fclose(f);
+        close(fid_edge);
+    }
+    closedir(dir);
+    fwrite(_adj, sizeof(vertex_t), _beg_pos[y] - _beg_pos[x], of);
+    free(_adj);
+    #ifndef HALF_GRID
+    fwrite(_adj_in + _beg_pos_in[x], sizeof(vertex_t), _beg_pos_in[y] - _beg_pos_in[x], of_in);
+    #endif
+    }
+   
+    double end = mywtime();
+    cout << "CSR conversion Time = " << end -  start << endl;
+   
+    fclose(of);
+
+    ofile = part_file + ".beg_pos";
+    of = fopen(ofile.c_str(), "wb");
+    assert(of != 0);
+    fwrite(_beg_pos, sizeof(index_t), vert_count + 1, of);
+    fclose(of);
+    cout << _beg_pos[vert_count] << endl;
+    
+    #ifndef HALF_GRID
+    fclose(of_in);
+    ofile_in = part_file + ".beg_pos_in";
+    of_in = fopen(ofile_in.c_str(), "wb");
+    assert(of_in != 0);
+    fwrite(_beg_pos_in, sizeof(index_t), vert_count + 1, of_in);
+    fclose(of_in);
+    cout << _beg_pos_in[vert_count] << endl;
+    #endif
+    
+    save_degree_files(part_file);
+}
+
 void gConv::proc_csr_dir(string idir, string part_file)
 {
     struct dirent *ptr;
@@ -1215,6 +1438,7 @@ void gConv::proc_csr_dir(string idir, string part_file)
         if (ptr->d_name[0] == '.') continue;
         
         file_count++;
+        edgefile = idir + "/" + string(ptr->d_name);
         //read the binary edge file
         int fid_edge = open(edgefile.c_str(), O_RDONLY);
         struct stat st_edge;
