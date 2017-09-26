@@ -46,6 +46,31 @@ inline off_t fsize(const char *filename) {
     return -1; 
 }
 
+
+void print_degree(string degree_file)
+{
+    int fid = open(degree_file.c_str(), O_RDONLY);
+    struct stat st_vert;
+    fstat(fid, &st_vert);
+    assert(st_vert.st_size != 0);
+    vertex_t v_count = st_vert.st_size/sizeof(degree_t);
+    close(fid);
+    //cout << "v_count:" << v_count << endl;
+    
+    degree_t* vtable = (degree_t*)calloc(sizeof(degree_t), v_count);
+    FILE* f_vtable = fopen(degree_file.c_str(), "rb");
+    fread(vtable, sizeof(degree_t), v_count, f_vtable);
+    fclose(f_vtable);
+
+    sort(vtable, vtable+v_count);
+
+    for (vertex_t v = 0; v < v_count; ++v) {
+        cout << v << " " << vtable[v] << endl;
+    }
+
+
+}
+
 void print_csr(string part_file)
 {
     string file_etable = part_file + ".adj_rankbydegree";
@@ -363,7 +388,7 @@ void gConv::init(int argc, char * argv[])
     }
 
     double start, end;
-    cout << vert_count << endl; 
+    //cout << vert_count << endl; 
     switch(c) {
     case 0:
 		start = mywtime();
@@ -422,6 +447,8 @@ void gConv::init(int argc, char * argv[])
     case 8: 
         proc_csr_big(edgefile, part_file);
         return;
+    case 9: print_degree(edgefile);
+            return;
     default:
         return;
     } 

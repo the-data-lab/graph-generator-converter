@@ -25,7 +25,7 @@ extern "C" {
 #endif
 
 
-#ifdef GENERATOR_USE_48BIT
+#if defined(GENERATOR_USE_48BIT)
 typedef uint64_t vertex_t;
 
 typedef struct packed_edge {
@@ -48,7 +48,7 @@ static inline void write_edge(packed_edge* p, int64_t v0, int64_t v1) {
   p->high = ((v0 >> 32) & 0xFFFF) | (((v1 >> 32) & 0xFFFF) << 16);
 }
 
-#elif GENERATOR_USE_64BIT
+#elif defined (GENERATOR_USE_64BIT)
 typedef uint64_t vertex_t;
 
 typedef struct packed_edge {

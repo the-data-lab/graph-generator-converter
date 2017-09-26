@@ -12,9 +12,11 @@
 
 /* Settings for user modification ----------------------------------- */
 
-/* #define GENERATOR_USE_48BITS -- 48 bits per vertex */
-/* #define GENERATOR_USE_64BITS -- 64 bits per vertex */
+/* #define GENERATOR_USE_48BIT -- 48 bits per vertex */
+/* #define GENERATOR_USE_64BIT -- 64 bits per vertex */
 /* no macro means               -- 32 bits per vertex */
+
+#define GENERATOR_USE_64BIT
 
 //#define GENERATOR_USE_PACKED_EDGE_TYPE 
 
