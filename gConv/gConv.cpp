@@ -46,6 +46,56 @@ inline off_t fsize(const char *filename) {
     return -1; 
 }
 
+void bin_to_text(string edgefile, string part_file)
+{
+    //read the binary edge file
+    int fid_edge = open(edgefile.c_str(), O_RDONLY);
+    struct stat st_edge;
+    fstat(fid_edge, &st_edge);
+    assert(st_edge.st_size != 0);
+    index_t nedges = st_edge.st_size/sizeof(gedge_t);
+    gedge_t* edges;
+    /*
+    edges = (gedge_t*)mmap(0, st_edge.st_size, PROT_READ, 
+                                    MAP_PRIVATE, fid_edge, 0);
+    madvise(edges, st_edge.st_size, MADV_SEQUENTIAL);
+    */
+    edges = (gedge_t*) malloc(st_edge.st_size);
+    FILE* f = fopen(edgefile.c_str(), "rb");
+    fread(edges, sizeof(gedge_t), nedges, f);
+
+    double start = mywtime();
+    
+
+        gedge_t  edge;
+        vertex_t v0, v1;
+        
+        index_t n, m;
+        
+		for(index_t k = 0; k < nedges; ++k) {
+			edge = edges[k];
+			if (edge.is_self_loop()) continue;
+	    
+			v0 = edge.get_v0();
+			v1 = edge.get_v1();
+            cerr << v0 << " " << v1 << endl;
+            cerr << v1 << " " << v0 << endl;
+			
+		}
+   
+    //munmap (edges, st_edge.st_size);
+	//free(_adj);
+	//free(_beg_pos);
+	//#ifndef HALF_GRID
+	//free(_adj_in);	
+	//#endif
+
+    close(fid_edge);
+    fclose(f); 
+    double end = mywtime();
+    cout << "Conversion Time = " << end -  start << endl;
+}
+
 
 void print_degree(string degree_file)
 {
@@ -449,6 +499,12 @@ void gConv::init(int argc, char * argv[])
         return;
     case 9: print_degree(edgefile);
             return;
+    case 10:
+		start = mywtime();
+		bin_to_text(edgefile, part_file);//input is edge tuple file
+		end = mywtime();
+		cout << "Time = " << end - start << endl;
+		return;
     default:
         return;
     } 
