@@ -12,4 +12,5 @@ size of each edge. Vertex ends of each edge can either be 32bit, 48bit or 64bit 
 This executable can be used to generate any size graph, as the generator writes the graph file periodically to disk so that the memory
 requirement remains below a threshold.
 
-Use the executable without any command line to print the help message. 
+Use the executable without any command line to print the help message. Last two arguments should always be 1 and 1. We plan to extend this
+generator.
