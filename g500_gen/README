@@ -1,3 +1,15 @@
 Based on graph500 generator.
-1. classify the output into 2d partitioning
-2. 
+It always generates a directed graph in edge list format. 
+If you want an undirected graph, we need to use a converter to generate the reverse edge. 
+Generally, the converter (other projects) will convert the edge file to directed and undirected CSR or other formats.
+
+Only MPI version is tested, and default "make" will compile the MPI version. Hence, you can use any cluster with MPI to generate graphs.
+However, this compiled binary can be used in a single machine as well. 
+
+See macro in the user_settings.h for generating the graph to configure the edge size. There are 3 options, where you can configure the 
+size of each edge. Vertex ends of each edge can either be 32bit, 48bit or 64bit size. 
+
+This executable can be used to generate any size graph, as the generator writes the graph file periodically to disk so that the memory
+requirement remains below a threshold.
+
+Use the executable without any command line to print the help message. 
